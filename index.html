@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contexto Custom - Multi-jugador en Tiempo Real</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            green: '#22c55e',
+                            yellow: '#eab308',
+                            orange: '#f97316',
+                            red: '#ef4444',
+                            dark: '#0f172a',
+                            card: '#1e293b',
+                            accent: '#6366f1'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- JS Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        @keyframes pulse-subtle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+        .animate-pulse-subtle {
+            animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('game')">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid font-bold text-white">C</i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">Contexto En Vivo</h1>
+                    <p class="text-xs text-slate-400" id="header-user-tag">Jugador: Invitado</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button onclick="switchTab('game')" id="nav-btn-game" class="px-3 py-1.5 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow-md hover:bg-indigo-500 flex items-center gap-1.5">
+                    <i class="fa-solid fa-gamepad"></i> <span class="hidden sm:inline">Jugar</span>
+                </button>
+                <button onclick="switchTab('leaderboard')" id="nav-btn-leaderboard" class="px-3 py-1.5 rounded-lg text-sm font-medium transition bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-trophy text-amber-400"></i> <span class="hidden sm:inline">Ranking En Vivo</span>
+                </button>
+                <button onclick="switchTab('creator')" id="nav-btn-creator" class="px-3 py-1.5 rounded-lg text-sm font-medium transition bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check"></i> <span class="hidden sm:inline">Preguntas (Max 10)</span>
+                </button>
+                <button onclick="openHelpModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition" title="Ayuda">
+                    <i class="fa-solid fa-circle-question text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-3xl w-full mx-auto p-4 flex-grow">
+
+        <!-- ALIAS INPUT BANNER -->
+        <section id="user-setup-card" class="bg-gradient-to-r from-indigo-900/40 via-purple-900/20 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 mb-6 shadow-xl">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-full bg-indigo-600/30 border border-indigo-400 flex items-center justify-center text-indigo-300 text-xl shrink-0">
+                        <i class="fa-solid fa-user-astronaut"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-white">Ingresa tu Nombre o Alias</h2>
+                        <p class="text-xs text-slate-400">Tus datos se sincronizan en **tiempo real** para que compitas con otros jugadores.</p>
+                    </div>
+                </div>
+                <form onsubmit="saveUserAlias(event)" class="flex items-center gap-2 w-full sm:w-auto">
+                    <input type="text" id="alias-input" required placeholder="Tu alias (Ej: Alex99)" 
+                        class="bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl px-3 py-2 text-sm text-slate-100 outline-none w-full sm:w-44">
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-xl text-xs font-bold text-white shrink-0 transition">
+                        Guardar
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- GAME TAB -->
+        <section id="tab-game" class="space-y-6">
+            <!-- Progress & Live Stats Banner -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30" id="game-progress-tag">
+                            Pregunta 1 de 10
+                        </span>
+                        <span class="text-xs text-slate-400 font-semibold" id="game-category">Algoritmos</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-slate-400">
+                        <div class="flex items-center gap-1 text-emerald-400 font-mono font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                            <i class="fa-regular fa-clock"></i>
+                            <span id="live-timer">00:00</span>
+                        </div>
+                        <div class="flex items-center gap-1 text-amber-400 font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                            <i class="fa-solid fa-trophy"></i>
+                            <span id="live-rank-badge">Puesto: #--</span>
+                        </div>
+                        <div id="connection-status-badge" class="flex items-center gap-1 text-slate-500 text-[10px] bg-slate-950 px-2 py-1 rounded-lg border border-slate-800" title="Estado de sincronización en tiempo real">
+                            <i class="fa-solid fa-circle text-amber-500 text-[8px]" id="status-dot"></i>
+                            <span id="status-text">Conectando...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap justify-between items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-white" id="game-title">¿Cuál es la palabra secreta?</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Encuentra la palabra número 1 por relación semántica.</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="text-center px-3.5 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700/50">
+                            <span class="block text-[10px] text-slate-400 font-medium uppercase">Intentos Acumulados</span>
+                            <span class="text-lg font-extrabold text-indigo-400" id="session-total-attempts">0</span>
+                        </div>
+                        <button id="btn-hint" onclick="requestHint()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-medium text-amber-400 hover:text-amber-300 transition flex flex-col items-center gap-0.5">
+                            <i class="fa-solid fa-lightbulb"></i>
+                            <span>Pista</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hint display -->
+                <div id="hint-box" class="hidden p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-lightbulb text-amber-400 text-sm"></i>
+                    <span id="hint-text">Pista aquí...</span>
+                </div>
+            </div>
+
+            <!-- Input Form -->
+            <form id="guess-form" onsubmit="handleGuess(event)" class="relative flex items-center gap-2">
+                <div class="relative flex-grow">
+                    <input type="text" id="guess-input" autocomplete="off" placeholder="Escribe una palabra en español..." 
+                        class="w-full bg-slate-900 border-2 border-slate-800 focus:border-indigo-500 focus:outline-none rounded-xl px-4 py-3.5 text-base font-medium text-slate-100 placeholder-slate-500 transition shadow-inner">
+                </div>
+                <button type="submit" id="btn-submit" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold px-6 py-3.5 rounded-xl transition flex items-center gap-2 shadow-lg shadow-indigo-600/25">
+                    <span>Enviar</span>
+                    <i class="fa-solid fa-paper-plane text-sm"></i>
+                </button>
+            </form>
+
+            <!-- Toast Banner -->
+            <div id="toast-message" class="hidden p-3 rounded-xl text-sm font-medium text-center transition"></div>
+
+            <!-- Level Victory Card -->
+            <div id="victory-card" class="hidden bg-gradient-to-b from-emerald-900/40 to-slate-900 border border-emerald-500/40 rounded-2xl p-6 text-center shadow-2xl space-y-4 animate-pulse-subtle">
+                <div class="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-2xl border border-emerald-500/40">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                    <h3 class="text-2xl font-black text-emerald-300">¡Palabra Adivinada!</h3>
+                    <p class="text-slate-300 text-sm mt-1">
+                        La palabra era <strong class="text-white underline decoration-emerald-400 uppercase tracking-wide" id="secret-word-display">...</strong>.
+                    </p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        Intentos en esta palabra: <span id="total-level-attempts" class="font-bold text-emerald-400">0</span> &bull; Posición actual en tiempo real: <strong id="victory-rank-display" class="text-amber-400">#1</strong>
+                    </p>
+                </div>
+                
+                <div class="pt-2 flex justify-center">
+                    <button id="btn-next-question" onclick="nextQuestion()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-sm transition flex items-center gap-2 shadow-lg shadow-emerald-600/30">
+                        <span>Siguiente palabra secreta</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Campaign Finished Card -->
+            <div id="campaign-finish-card" class="hidden bg-gradient-to-b from-indigo-900/50 via-purple-900/30 to-slate-900 border border-indigo-500/40 rounded-2xl p-6 text-center shadow-2xl space-y-5">
+                <div class="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-3xl border border-amber-500/40">
+                    <i class="fa-solid fa-crown"></i>
+                </div>
+                <div>
+                    <h3 class="text-2xl font-black text-amber-300">¡Felicidades! Has completado la partida</h3>
+                    <p class="text-slate-300 text-sm mt-1">
+                        Completaste las <span id="finish-total-questions" class="font-bold text-white">10</span> palabras secretas.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 max-w-sm mx-auto bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                    <div>
+                        <span class="block text-[10px] uppercase text-slate-400">Jugador</span>
+                        <strong class="text-xs text-indigo-300 truncate block" id="finish-player-name">Alias</strong>
+                    </div>
+                    <div>
+                        <span class="block text-[10px] uppercase text-slate-400">Intentos</span>
+                        <strong class="text-xs text-emerald-400" id="finish-total-attempts">0</strong>
+                    </div>
+                    <div>
+                        <span class="block text-[10px] uppercase text-slate-400">Tiempo</span>
+                        <strong class="text-xs text-amber-400" id="finish-total-time">00:00</strong>
+                    </div>
+                </div>
+
+                <div class="flex justify-center gap-3 pt-2">
+                    <button onclick="restartGameSeries()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold text-xs transition flex items-center gap-2">
+                        <i class="fa-solid fa-rotate-right"></i> Volver a Jugar
+                    </button>
+                    <button onclick="switchTab('leaderboard')" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl font-semibold text-xs transition flex items-center gap-2">
+                        <i class="fa-solid fa-trophy"></i> Ver Ranking
+                    </button>
+                </div>
+            </div>
+
+            <!-- Guesses List -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-400 px-2">
+                    <span>Palabras Probadas</span>
+                    <span>Posición / Cercanía</span>
+                </div>
+
+                <div id="guesses-list" class="space-y-2">
+                    <div id="empty-state" class="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+                        <i class="fa-solid fa-compass text-3xl mb-2 opacity-40"></i>
+                        <p class="text-sm">Aún no has probado ninguna palabra para este nivel.</p>
+                        <p class="text-xs text-slate-600 mt-1">Escribe tu primer intento arriba para ver la cercanía al número 1.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CREATOR TAB (Up to 10 Questions) -->
+        <section id="tab-creator" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-indigo-400"></i>
+                            <span>Editor de Preguntas (Max 10)</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Configura las palabras secretas ordenadas que deberán resolver los jugadores.</p>
+                    </div>
+                    
+                    <!-- Presets -->
+                    <button onclick="loadDefaultPreset('algorithms')" class="px-3 py-2 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 text-indigo-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shrink-0">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Cargar Preset: Algoritmos & Redes</span>
+                    </button>
+                </div>
+
+                <!-- Questions List Manager -->
+                <div id="questions-builder-list" class="space-y-4">
+                    <!-- Dynamic Question Forms generated by JS -->
+                </div>
+
+                <div class="flex items-center justify-between pt-2">
+                    <button id="btn-add-question" onclick="addQuestionToBuilder()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Agregar Pregunta (<span id="questions-count-badge">0</span>/10)</span>
+                    </button>
+
+                    <button onclick="saveAllQuestions()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-600/20 flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Guardar Partida y Comenzar</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- LEADERBOARD TAB -->
+        <section id="tab-leaderboard" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-trophy text-amber-400"></i>
+                            <span>Ranking Global en Tiempo Real</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Sincronizado al instante con Firebase Firestore. Se ordena por: 1º Palabras resueltas, 2º Menos intentos, 3º Menos tiempo.</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-[10px] text-slate-500 uppercase font-semibold">Participantes Conectados</span>
+                        <span class="text-lg font-extrabold text-indigo-400" id="global-participants-count">0</span>
+                    </div>
+                </div>
+
+                <!-- Leaderboard Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
+                            <tr>
+                                <th class="p-3 rounded-l-xl">Puesto</th>
+                                <th class="p-3">Participante</th>
+                                <th class="p-3">Nivel Alcanzado</th>
+                                <th class="p-3">Total Intentos</th>
+                                <th class="p-3">Tiempo Total</th>
+                                <th class="p-3">Estado</th>
+                                <th class="p-3 rounded-r-xl">Última Actividad</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-table-body" class="divide-y divide-slate-800/60">
+                            <!-- Populated dynamically via Firebase onSnapshot -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <p class="text-[10px] text-slate-500 flex items-center gap-1">
+                        <i class="fa-solid fa-bolt text-amber-400"></i> Sincronización instantánea activa sin recargar
+                    </p>
+                    <button onclick="switchTab('game')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition">
+                        Volver al juego
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 py-4 text-center text-xs text-slate-600">
+        <p>Contexto Custom Multi-Jugador &bull; Sincronización en vivo con Firebase Firestore.</p>
+    </footer>
+
+    <!-- HELP MODAL -->
+    <div id="help-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <button onclick="closeHelpModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-indigo-400"></i> Instructivo Multi-jugador
+            </h3>
+            <div class="space-y-3 text-xs text-slate-300">
+                <p>1. <strong>Identificación:</strong> Escribe tu alias o nombre en el campo superior para guardar tu presencia en la nube.</p>
+                <p>2. <strong>Adivina por cercanía:</strong> Escribe cualquier palabra en español. La posición indica qué tan cerca está semánticamente de la palabra secreta (1 = ¡Adivinado!).</p>
+                <p>3. <strong>Sincronización en Tiempo Real:</strong> Cada vez que adivinas una palabra o avanzas de nivel, tu puntuación se transmite a todos los participantes conectados mediante Firebase.</p>
+                <p>4. <strong>Ranking Global:</strong> El participante que complete más preguntas en menor tiempo e intentos ocupará el primer lugar en tiempo real.</p>
+            </div>
+            <button onclick="closeHelpModal()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs transition">
+                Entendido
+            </button>
+        </div>
+    </div>
+
+    <!-- FIREBASE MODULE & GAME SCRIPT -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration & Initialization
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'contexto-game-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "demo-key", authDomain: "demo.firebaseapp.com", projectId: "demo-project" };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let isFirebaseConnected = false;
+
+        // Preset Collection for Algoritmos y Burbujas Informativas
+        const PRESET_ALGORITHMS = [
+            {
+                secretWord: "ALGORITMO",
+                category: "Tecnología",
+                hint: "Conjunto de instrucciones ordenadas para resolver un problema.",
+                customDistances: { "codigo": 10, "instruccion": 25, "formula": 40, "programacion": 60, "datos": 85, "ordenador": 120, "feed": 180, "recomendacion": 250 }
+            },
+            {
+                secretWord: "BURBUJA",
+                category: "Burbujas Informativas",
+                hint: "Estado de aislamiento en el que un usuario solo ve contenido que confirma sus ideas.",
+                customDistances: { "filtro": 15, "aislamiento": 35, "sesgo": 50, "confirmacion": 70, "eco": 120, "polarizacion": 200 }
+            },
+            {
+                secretWord: "DESINFORMACION",
+                category: "Medios Digitales",
+                hint: "Difusión de datos falsos o engañosos para manipular.",
+                customDistances: { "falsedad": 20, "fake": 35, "manipulacion": 50, "bulo": 80, "enganio": 110, "noticia": 200 }
+            },
+            {
+                secretWord: "SESGO",
+                category: "Cognición y Algoritmos",
+                hint: "Inclinación o prejuicio hacia una perspectiva específica.",
+                customDistances: { "prejuicio": 15, "inclinacion": 30, "error": 60, "subjetivo": 100 }
+            },
+            {
+                secretWord: "RECOMENDACION",
+                category: "Plataformas Digitales",
+                hint: "Sistema algorítmico que sugiere contenidos según tu comportamiento previo.",
+                customDistances: { "sugerencia": 15, "feed": 30, "motor": 50, "preferencia": 90 }
+            }
+        ];
+
+        // Global Game State
+        window.questionsList = [...PRESET_ALGORITHMS];
+        window.currentQuestionIndex = 0;
+        window.currentUserAlias = "Invitado_" + Math.floor(Math.random() * 8999 + 1000);
+        window.sessionTotalAttempts = 0;
+        window.levelGuesses = []; 
+        window.isLevelCompleted = false;
+
+        // Timer State
+        window.startTime = null;
+        window.timerInterval = null;
+        window.totalElapsedSeconds = 0;
+
+        // Realtime Global Leaderboard array from Firebase
+        window.globalLeaderboardData = [];
+
+        // Expose functions to global scope for HTML inline handlers
+        window.saveUserAlias = saveUserAlias;
+        window.handleGuess = handleGuess;
+        window.nextQuestion = nextQuestion;
+        window.restartGameSeries = restartGameSeries;
+        window.requestHint = requestHint;
+        window.switchTab = switchTab;
+        window.addQuestionToBuilder = addQuestionToBuilder;
+        window.removeQuestionFromBuilder = removeQuestionFromBuilder;
+        window.updateQuestionField = updateQuestionField;
+        window.saveAllQuestions = saveAllQuestions;
+        window.loadDefaultPreset = loadDefaultPreset;
+        window.openHelpModal = openHelpModal;
+        window.closeHelpModal = closeHelpModal;
+
+        // Initialize Application
+        window.addEventListener('DOMContentLoaded', async () => {
+            loadStoredUser();
+            loadStoredQuestions();
+            initQuestionLevel();
+            renderQuestionsBuilder();
+            startTimer();
+
+            // Setup Firebase Authentication and Listeners
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth Fallback:", err);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    isFirebaseConnected = true;
+                    updateConnectionStatus(true);
+                    subscribeToRealtimeLeaderboard();
+                    syncScoreToFirebase(false);
+                } else {
+                    updateConnectionStatus(false);
+                }
+            });
+        });
+
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('status-dot');
+            const txt = document.getElementById('status-text');
+            if (connected) {
+                dot.className = "fa-solid fa-circle text-emerald-400 text-[8px] animate-pulse";
+                txt.innerText = "En Vivo";
+            } else {
+                dot.className = "fa-solid fa-circle text-rose-500 text-[8px]";
+                txt.innerText = "Desconectado";
+            }
+        }
+
+        // Firebase Realtime Listener (RULE 1 & RULE 2 applied)
+        function subscribeToRealtimeLeaderboard() {
+            if (!currentUser) return;
+
+            // Strict mandatory path: /artifacts/{appId}/public/data/leaderboard
+            const leaderboardColRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+
+            onSnapshot(leaderboardColRef, (snapshot) => {
+                const updatedList = [];
+                snapshot.forEach((doc) => {
+                    updatedList.push({ id: doc.id, ...doc.data() });
+                });
+
+                window.globalLeaderboardData = sortLeaderboardArray(updatedList);
+                renderLeaderboardTable();
+                updateLiveRankBadge();
+            }, (error) => {
+                console.error("Firestore onSnapshot error:", error);
+                updateConnectionStatus(false);
+            });
+        }
+
+        // Sync Current Player Score to Firestore
+        async function syncScoreToFirebase(completedAll = false) {
+            if (!currentUser) return;
+
+            const userId = currentUser.uid;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', userId);
+
+            const solvedCount = window.isLevelCompleted ? window.currentQuestionIndex + 1 : window.currentQuestionIndex;
+
+            const payload = {
+                uid: userId,
+                alias: window.currentUserAlias,
+                completedQuestions: solvedCount,
+                totalQuestions: window.questionsList.length,
+                totalAttempts: window.sessionTotalAttempts,
+                elapsedSeconds: window.totalElapsedSeconds,
+                formattedTime: formatTime(window.totalElapsedSeconds),
+                isFinished: completedAll,
+                updatedAt: Date.now(),
+                lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            try {
+                await setDoc(docRef, payload, { merge: true });
+            } catch (err) {
+                console.error("Error syncing to Firestore:", err);
+            }
+        }
+
+        // Timer Controls
+        function startTimer() {
+            if (!window.startTime) window.startTime = Date.now();
+            if (window.timerInterval) clearInterval(window.timerInterval);
+
+            window.timerInterval = setInterval(() => {
+                window.totalElapsedSeconds = Math.floor((Date.now() - window.startTime) / 1000);
+                document.getElementById('live-timer').innerText = formatTime(window.totalElapsedSeconds);
+            }, 1000);
+        }
+
+        function formatTime(totalSeconds) {
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // User Setup
+        function loadStoredUser() {
+            const savedAlias = localStorage.getItem('contexto_alias');
+            if (savedAlias) {
+                window.currentUserAlias = savedAlias;
+            }
+            document.getElementById('alias-input').value = window.currentUserAlias;
+            document.getElementById('header-user-tag').innerText = "Jugador: " + window.currentUserAlias;
+        }
+
+        function saveUserAlias(e) {
+            e.preventDefault();
+            const aliasVal = document.getElementById('alias-input').value.trim();
+            if (aliasVal) {
+                window.currentUserAlias = aliasVal;
+                localStorage.setItem('contexto_alias', aliasVal);
+                document.getElementById('header-user-tag').innerText = "Jugador: " + aliasVal;
+                showToast("Alias actualizado en el Ranking", "success");
+                syncScoreToFirebase(false);
+            }
+        }
+
+        // Questions Data Management
+        function loadStoredQuestions() {
+            const saved = localStorage.getItem('contexto_questions_list');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        window.questionsList = parsed;
+                    }
+                } catch(e){}
+            }
+        }
+
+        function initQuestionLevel() {
+            if (window.questionsList.length === 0) {
+                window.questionsList = [...PRESET_ALGORITHMS];
+            }
+
+            if (window.currentQuestionIndex >= window.questionsList.length) {
+                window.currentQuestionIndex = window.questionsList.length - 1;
+            }
+
+            const currentQ = window.questionsList[window.currentQuestionIndex];
+            window.levelGuesses = [];
+            window.isLevelCompleted = false;
+
+            // UI Updates
+            document.getElementById('game-progress-tag').innerText = `Pregunta ${window.currentQuestionIndex + 1} de ${window.questionsList.length}`;
+            document.getElementById('game-category').innerText = currentQ.category || "General";
+            document.getElementById('session-total-attempts').innerText = window.sessionTotalAttempts;
+
+            document.getElementById('guess-input').value = "";
+            document.getElementById('guess-input').disabled = false;
+            document.getElementById('btn-submit').disabled = false;
+
+            document.getElementById('victory-card').classList.add('hidden');
+            document.getElementById('campaign-finish-card').classList.add('hidden');
+            document.getElementById('hint-box').classList.add('hidden');
+
+            renderGuessesList();
+            updateLiveRankBadge();
+        }
+
+        // Navigation Tabs
+        function switchTab(tab) {
+            const tabs = ['game', 'creator', 'leaderboard'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                const btn = document.getElementById(`nav-btn-${t}`);
+                if (t === tab) {
+                    el.classList.remove('hidden');
+                    if (btn) btn.className = "px-3 py-1.5 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow-md flex items-center gap-1.5";
+                } else {
+                    el.classList.add('hidden');
+                    if (btn) btn.className = "px-3 py-1.5 rounded-lg text-sm font-medium transition bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5";
+                }
+            });
+
+            if (tab === 'leaderboard') renderLeaderboardTable();
+            if (tab === 'creator') renderQuestionsBuilder();
+        }
+
+        // Guessing Logic
+        function handleGuess(e) {
+            e.preventDefault();
+            if (window.isLevelCompleted) return;
+
+            const inputEl = document.getElementById('guess-input');
+            const rawWord = inputEl.value.trim();
+            if (!rawWord) return;
+
+            const cleanInput = sanitizeWord(rawWord);
+            const currentQ = window.questionsList[window.currentQuestionIndex];
+            const targetWord = sanitizeWord(currentQ.secretWord);
+
+            if (window.levelGuesses.some(g => g.cleanWord === cleanInput)) {
+                showToast(`Ya intentaste la palabra "${rawWord}" en este nivel.`, "info");
+                inputEl.value = "";
+                return;
+            }
+
+            window.sessionTotalAttempts++;
+            document.getElementById('session-total-attempts').innerText = window.sessionTotalAttempts;
+
+            let distance = 1000;
+            if (cleanInput === targetWord) {
+                distance = 1;
+            } else if (currentQ.customDistances && currentQ.customDistances[cleanInput]) {
+                distance = parseInt(currentQ.customDistances[cleanInput]);
+            } else {
+                distance = computeSemanticDistance(cleanInput, targetWord);
+            }
+
+            window.levelGuesses.push({
+                displayWord: rawWord,
+                cleanWord: cleanInput,
+                distance: distance
+            });
+
+            window.levelGuesses.sort((a, b) => a.distance - b.distance);
+            inputEl.value = "";
+
+            renderGuessesList();
+
+            if (distance === 1) {
+                handleLevelVictory();
+            } else {
+                syncScoreToFirebase(false);
+            }
+        }
+
+        function handleLevelVictory() {
+            window.isLevelCompleted = true;
+            document.getElementById('guess-input').disabled = true;
+            document.getElementById('btn-submit').disabled = true;
+
+            const currentQ = window.questionsList[window.currentQuestionIndex];
+            document.getElementById('secret-word-display').innerText = currentQ.secretWord;
+            document.getElementById('total-level-attempts').innerText = window.levelGuesses.length;
+
+            const isLast = window.currentQuestionIndex === window.questionsList.length - 1;
+            syncScoreToFirebase(isLast);
+
+            const currentRank = calculateUserRank();
+            document.getElementById('victory-rank-display').innerText = `#${currentRank}`;
+            document.getElementById('victory-card').classList.remove('hidden');
+
+            confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+
+            if (isLast) {
+                document.getElementById('btn-next-question').innerText = "Ver resumen de partida";
+            } else {
+                document.getElementById('btn-next-question').innerText = "Siguiente palabra secreta";
+            }
+        }
+
+        function nextQuestion() {
+            document.getElementById('victory-card').classList.add('hidden');
+
+            if (window.currentQuestionIndex < window.questionsList.length - 1) {
+                window.currentQuestionIndex++;
+                initQuestionLevel();
+            } else {
+                if (window.timerInterval) clearInterval(window.timerInterval);
+                document.getElementById('finish-player-name').innerText = window.currentUserAlias;
+                document.getElementById('finish-total-attempts').innerText = window.sessionTotalAttempts;
+                document.getElementById('finish-total-time').innerText = formatTime(window.totalElapsedSeconds);
+                document.getElementById('finish-total-questions').innerText = window.questionsList.length;
+                document.getElementById('campaign-finish-card').classList.remove('hidden');
+
+                syncScoreToFirebase(true);
+            }
+        }
+
+        function restartGameSeries() {
+            window.currentQuestionIndex = 0;
+            window.sessionTotalAttempts = 0;
+            window.startTime = Date.now();
+            window.totalElapsedSeconds = 0;
+            startTimer();
+            initQuestionLevel();
+            syncScoreToFirebase(false);
+        }
+
+        // Hints
+        function requestHint() {
+            const currentQ = window.questionsList[window.currentQuestionIndex];
+            const hintBox = document.getElementById('hint-box');
+            const hintText = document.getElementById('hint-text');
+
+            if (currentQ.hint && currentQ.hint.trim() !== "") {
+                hintText.innerText = currentQ.hint;
+            } else {
+                const target = currentQ.secretWord.toUpperCase();
+                hintText.innerText = `La palabra tiene ${target.length} letras y empieza con la letra '${target[0]}'.`;
+            }
+
+            hintBox.classList.remove('hidden');
+        }
+
+        // Render Guesses List
+        function renderGuessesList() {
+            const listEl = document.getElementById('guesses-list');
+            if (window.levelGuesses.length === 0) {
+                listEl.innerHTML = `
+                    <div id="empty-state" class="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+                        <i class="fa-solid fa-compass text-3xl mb-2 opacity-40"></i>
+                        <p class="text-sm">Aún no has probado ninguna palabra para este nivel.</p>
+                        <p class="text-xs text-slate-600 mt-1">Escribe tu primer intento arriba para ver la cercanía al número 1.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = window.levelGuesses.map(g => {
+                const colorInfo = getDistanceColorClass(g.distance);
+                const progressWidth = Math.max(4, Math.min(100, Math.round(((1000 - g.distance) / 1000) * 100)));
+
+                return `
+                    <div class="relative overflow-hidden bg-slate-900 border ${colorInfo.borderClass} rounded-xl p-3 flex items-center justify-between transition-all shadow-md">
+                        <div class="absolute left-0 top-0 bottom-0 ${colorInfo.bgClass} opacity-15" style="width: ${progressWidth}%;"></div>
+
+                        <div class="relative z-10 flex items-center gap-3">
+                            <span class="font-bold text-sm text-slate-100 capitalize">${escapeHtml(g.displayWord)}</span>
+                        </div>
+
+                        <div class="relative z-10 flex items-center gap-3">
+                            <div class="w-20 bg-slate-800 h-2 rounded-full overflow-hidden hidden sm:block">
+                                <div class="${colorInfo.barClass} h-full" style="width: ${progressWidth}%"></div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-lg ${colorInfo.badgeClass} font-extrabold text-xs min-w-[45px] text-center">
+                                ${g.distance}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Questions Builder Manager
+        function renderQuestionsBuilder() {
+            const container = document.getElementById('questions-builder-list');
+            document.getElementById('questions-count-badge').innerText = window.questionsList.length;
+
+            container.innerHTML = window.questionsList.map((q, idx) => `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 relative">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-xs font-extrabold text-indigo-400">Pregunta ${idx + 1} de 10</span>
+                        ${window.questionsList.length > 1 ? `
+                            <button onclick="removeQuestionFromBuilder(${idx})" class="text-rose-400 hover:text-rose-300 text-xs font-semibold">
+                                <i class="fa-solid fa-trash-can"></i> Eliminar
+                            </button>
+                        ` : ''}
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="sm:col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Palabra Secreta #1</label>
+                            <input type="text" value="${escapeHtml(q.secretWord)}" onchange="updateQuestionField(${idx}, 'secretWord', this.value)"
+                                placeholder="Ej: ALGORITMO" class="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white uppercase font-bold outline-none">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoría</label>
+                            <input type="text" value="${escapeHtml(q.category || '')}" onchange="updateQuestionField(${idx}, 'category', this.value)"
+                                placeholder="Ej: Tecnología" class="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Pista</label>
+                            <input type="text" value="${escapeHtml(q.hint || '')}" onchange="updateQuestionField(${idx}, 'hint', this.value)"
+                                placeholder="Ej: Instrucciones ordenadas" class="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            const addBtn = document.getElementById('btn-add-question');
+            if (window.questionsList.length >= 10) {
+                addBtn.disabled = true;
+                addBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                addBtn.disabled = false;
+                addBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function addQuestionToBuilder() {
+            if (window.questionsList.length >= 10) return;
+            window.questionsList.push({
+                secretWord: "NUEVA_PALABRA",
+                category: "General",
+                hint: "",
+                customDistances: {}
+            });
+            renderQuestionsBuilder();
+        }
+
+        function removeQuestionFromBuilder(index) {
+            if (window.questionsList.length <= 1) return;
+            window.questionsList.splice(index, 1);
+            renderQuestionsBuilder();
+        }
+
+        function updateQuestionField(index, field, value) {
+            if (field === 'secretWord') {
+                window.questionsList[index][field] = value.trim().toUpperCase();
+            } else {
+                window.questionsList[index][field] = value.trim();
+            }
+        }
+
+        function saveAllQuestions() {
+            localStorage.setItem('contexto_questions_list', JSON.stringify(window.questionsList));
+            showToast("Lista de preguntas guardada", "success");
+            restartGameSeries();
+            switchTab('game');
+        }
+
+        function loadDefaultPreset(presetKey) {
+            if (presetKey === 'algorithms') {
+                window.questionsList = [...PRESET_ALGORITHMS];
+                saveAllQuestions();
+                showToast("Preset sobre Algoritmos y Redes cargado", "success");
+            }
+        }
+
+        // Leaderboard Sorting (RULE 2: In-memory sorting)
+        function sortLeaderboardArray(arr) {
+            return arr.sort((a, b) => {
+                // 1st: Completed questions desc
+                const qA = a.completedQuestions || 0;
+                const qB = b.completedQuestions || 0;
+                if (qB !== qA) return qB - qA;
+
+                // 2nd: Total attempts asc
+                const attA = a.totalAttempts || 0;
+                const attB = b.totalAttempts || 0;
+                if (attA !== attB) return attA - attB;
+
+                // 3rd: Elapsed time asc
+                const timeA = a.elapsedSeconds || 0;
+                const timeB = b.elapsedSeconds || 0;
+                return timeA - timeB;
+            });
+        }
+
+        function calculateUserRank() {
+            if (!currentUser) return 1;
+            const myUid = currentUser.uid;
+            const rank = window.globalLeaderboardData.findIndex(item => item.uid === myUid || item.alias === window.currentUserAlias);
+            return rank >= 0 ? rank + 1 : window.globalLeaderboardData.length + 1;
+        }
+
+        function updateLiveRankBadge() {
+            const rank = calculateUserRank();
+            document.getElementById('live-rank-badge').innerText = `Puesto: #${rank}`;
+        }
+
+        function renderLeaderboardTable() {
+            const body = document.getElementById('leaderboard-table-body');
+            document.getElementById('global-participants-count').innerText = window.globalLeaderboardData.length;
+
+            if (window.globalLeaderboardData.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="p-6 text-center text-slate-500 text-xs">
+                            Aún no hay participantes registrados en la nube. ¡Sé el primero!
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            body.innerHTML = window.globalLeaderboardData.map((item, idx) => {
+                const isCurrent = currentUser && (item.uid === currentUser.uid || item.alias === window.currentUserAlias);
+                const rankNum = idx + 1;
+
+                let rankBadge = `<span class="font-bold ${rankNum === 1 ? 'text-amber-400' : rankNum === 2 ? 'text-slate-300' : rankNum === 3 ? 'text-amber-600' : 'text-slate-400'}">#${rankNum}</span>`;
+                if (rankNum === 1) rankBadge += ` <i class="fa-solid fa-crown text-amber-400 text-xs ml-1"></i>`;
+
+                return `
+                    <tr class="${isCurrent ? 'bg-indigo-950/70 border-l-4 border-indigo-500 font-semibold' : 'hover:bg-slate-900/50'} transition">
+                        <td class="p-3">${rankBadge}</td>
+                        <td class="p-3 font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-user-circle ${isCurrent ? 'text-indigo-400' : 'text-slate-500'}"></i>
+                            <span>${escapeHtml(item.alias || 'Anónimo')}</span>
+                            ${isCurrent ? '<span class="text-[9px] bg-indigo-600 text-white px-1.5 py-0.5 rounded uppercase font-bold">Tú</span>' : ''}
+                        </td>
+                        <td class="p-3 font-semibold text-indigo-300">${item.completedQuestions || 0} / ${item.totalQuestions || window.questionsList.length}</td>
+                        <td class="p-3 font-bold text-emerald-400">${item.totalAttempts || 0}</td>
+                        <td class="p-3 font-mono text-amber-300 text-xs">${item.formattedTime || formatTime(item.elapsedSeconds || 0)}</td>
+                        <td class="p-3">
+                            ${item.isFinished ? `
+                                <span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Completado</span>
+                            ` : `
+                                <span class="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px]">Jugando</span>
+                            `}
+                        </td>
+                        <td class="p-3 text-[10px] text-slate-500">${item.lastUpdated || '--:--'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Semantic Distance Algorithm
+        function computeSemanticDistance(wordA, wordB) {
+            if (wordA === wordB) return 1;
+
+            const levDist = levenshteinDistance(wordA, wordB);
+            const maxLen = Math.max(wordA.length, wordB.length);
+            const levSim = 1 - (levDist / maxLen);
+
+            const biSim = nGramSimilarity(wordA, wordB, 2);
+            const triSim = nGramSimilarity(wordA, wordB, 3);
+
+            let affixBonus = 0;
+            if (wordA.slice(0, 3) === wordB.slice(0, 3)) affixBonus += 0.2;
+            if (wordA.slice(-3) === wordB.slice(-3)) affixBonus += 0.2;
+
+            let combinedSim = (levSim * 0.4) + (biSim * 0.3) + (triSim * 0.2) + (affixBonus * 0.1);
+            combinedSim = Math.min(1, Math.max(0, combinedSim));
+
+            let rawRank = Math.floor(Math.pow(1 - combinedSim, 2.2) * 999) + 2;
+            const hashOffset = Math.abs(hashCode(wordA + wordB)) % 15;
+            return Math.min(1000, Math.max(2, rawRank + hashOffset));
+        }
+
+        function levenshteinDistance(a, b) {
+            const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+            for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+            for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+            for (let i = 1; i <= a.length; i++) {
+                for (let j = 1; j <= b.length; j++) {
+                    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j - 1] + cost
+                    );
+                }
+            }
+            return matrix[a.length][b.length];
+        }
+
+        function nGramSimilarity(str1, str2, n) {
+            const getNGrams = (str) => {
+                const grams = new Set();
+                for (let i = 0; i <= str.length - n; i++) grams.add(str.substring(i, i + n));
+                return grams;
+            };
+            const g1 = getNGrams(str1);
+            const g2 = getNGrams(str2);
+            if (g1.size === 0 || g2.size === 0) return 0;
+            let intersection = 0;
+            g1.forEach(gram => { if (g2.has(gram)) intersection++; });
+            return (2.0 * intersection) / (g1.size + g2.size);
+        }
+
+        function getDistanceColorClass(dist) {
+            if (dist === 1) {
+                return { borderClass: 'border-emerald-500', bgClass: 'bg-emerald-500', barClass: 'bg-emerald-500', badgeClass: 'bg-emerald-500 text-slate-950' };
+            } else if (dist <= 30) {
+                return { borderClass: 'border-emerald-500/50', bgClass: 'bg-emerald-500', barClass: 'bg-emerald-400', badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' };
+            } else if (dist <= 300) {
+                return { borderClass: 'border-amber-500/40', bgClass: 'bg-amber-500', barClass: 'bg-amber-400', badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' };
+            } else if (dist <= 700) {
+                return { borderClass: 'border-orange-500/30', bgClass: 'bg-orange-500', barClass: 'bg-orange-400', badgeClass: 'bg-orange-500/20 text-orange-300 border border-orange-500/30' };
+            } else {
+                return { borderClass: 'border-slate-800', bgClass: 'bg-rose-500', barClass: 'bg-rose-500/80', badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700' };
+            }
+        }
+
+        function sanitizeWord(str) {
+            return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        }
+
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = (hash << 5) - hash + str.charCodeAt(i);
+                hash |= 0;
+            }
+            return hash;
+        }
+
+        function escapeHtml(str) {
+            return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function showToast(message, type = "info") {
+            const toast = document.getElementById('toast-message');
+            toast.innerText = message;
+            toast.classList.remove('hidden', 'bg-emerald-950', 'text-emerald-300', 'bg-rose-950', 'text-rose-300', 'bg-slate-800', 'text-slate-200');
+
+            if (type === 'success') {
+                toast.classList.add('bg-emerald-950', 'text-emerald-300', 'border', 'border-emerald-500/30');
+            } else if (type === 'error') {
+                toast.classList.add('bg-rose-950', 'text-rose-300', 'border', 'border-rose-500/30');
+            } else {
+                toast.classList.add('bg-slate-800', 'text-slate-200', 'border', 'border-slate-700');
+            }
+
+            setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+        }
+
+        function openHelpModal() { document.getElementById('help-modal').classList.remove('hidden'); }
+        function closeHelpModal() { document.getElementById('help-modal').classList.add('hidden'); }
+    </script>
+</body>
+</html>
